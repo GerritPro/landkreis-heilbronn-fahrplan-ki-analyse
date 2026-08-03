@@ -1,0 +1,6 @@
+{
+  "name": "Landkreis Heilbronn - Fahrplan KI-Analyse",
+  "description": "Analyse und Vergleich von HNV / NVBW GTFS-Fahrplandaten mit KI-Auswertung, Umstiegsanalyse und interaktiver Kartenansicht.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
