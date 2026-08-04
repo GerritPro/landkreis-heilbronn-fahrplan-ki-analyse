@@ -189,11 +189,17 @@ export default function App() {
               ds2={ds2}
               setDs1={(ds) => {
                 setDs1(ds);
-                if (ds && isDemo) setIsDemo(false);
+                if (ds) {
+                  if (isDemo) setIsDemo(false);
+                  setIsUploadOpen(false); // nach Laden einklappen → mehr Platz
+                }
               }}
               setDs2={(ds) => {
                 setDs2(ds);
-                if (ds && isDemo) setIsDemo(false);
+                if (ds) {
+                  if (isDemo) setIsDemo(false);
+                  setIsUploadOpen(false);
+                }
               }}
               onStartDemoMode={handleStartDemo}
             />
@@ -203,10 +209,11 @@ export default function App() {
 
       {/* Main One-Page Dashboard Area */}
       <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        {/* Responsive Grid: 2-column on desktop (60% / 40%), 1-column on mobile */}
+        {/* Responsive Grid: Karte 58% / Analyse 42%, 1-spaltig auf mobil.
+            Karte füllt auf Desktop die volle Viewport-Höhe (sticky). */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT COLUMN: Sticky Interactive Map (60% width = col-span-7) */}
-          <div className="lg:col-span-7 lg:sticky lg:top-[72px] lg:h-[calc(100vh-88px)] min-h-[420px] h-[450px] lg:h-auto">
+          {/* LEFT COLUMN: Sticky Interactive Map, volle Höhe */}
+          <div className="lg:col-span-7 lg:sticky lg:top-[72px] lg:h-[calc(100vh-88px)] min-h-[440px] h-[560px]">
             <InteractiveMap
               ds1={ds1}
               ds2={ds2}
@@ -222,7 +229,7 @@ export default function App() {
             />
           </div>
 
-          {/* RIGHT COLUMN: Scrollable Analysis Sections (40% width = col-span-5) */}
+          {/* RIGHT COLUMN: Scrollable Analysis Sections (42% width = col-span-5) */}
           <div className="lg:col-span-5 space-y-4 lg:overflow-y-auto lg:h-[calc(100vh-88px)] pr-1">
             {/* Netz-Kennzahlen (nur wenn Daten geladen) */}
             <NetworkSummary ds1={ds1} ds2={ds2} />

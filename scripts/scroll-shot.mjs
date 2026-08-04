@@ -9,7 +9,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const res = await fetch("http://127.0.0.1:9222/json");
 const targets = await res.json();
-const page = targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl);
+const page =
+  targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && (t.url || "").includes("localhost:3000")) ||
+  targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl);
 if (!page) throw new Error("kein Page-Target");
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);

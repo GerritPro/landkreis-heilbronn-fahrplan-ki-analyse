@@ -16,6 +16,11 @@ import {
   Info,
 } from "lucide-react";
 
+// Farben für Linienverlauf & Richtungen (klar unterscheidbar)
+const ROUTE_LINE_COLOR = "#4F46E5"; // Indigo – gesamter Linienverlauf ("Beide")
+const DIR0_COLOR = "#E30613"; // Rot – Hinfahrt
+const DIR1_COLOR = "#2563EB"; // Blau – Rückfahrt
+
 interface InteractiveMapProps {
   ds1: GTFSDataSet | null;
   ds2: GTFSDataSet | null;
@@ -445,95 +450,40 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     if (filteredStops.length === 0) return;
 
-    // 1. Draw Polylines for selected route
+    // 1. Draw Polyline for selected route
     if (selectedRouteId !== "ALL") {
-      const selectedRouteObj = routesToRender.find((r) => r.route_id === selectedRouteId);
-      const routeColor = selectedRouteObj?.route_color
-        ? `#${selectedRouteObj.route_color}`
-        : selectedRouteObj?.route_short_name?.startsWith("S") || selectedRouteObj?.route_short_name?.startsWith("R")
-        ? "#0066CC"
-        : "#E30613";
-
-      // Dir 0 (Hinfahrt)
-      if ((directionFilter === "BOTH" || directionFilter === "0") && hasDir0) {
-        const latLons0 = getPolylineForDirection(dir0Trips, false);
-        if (latLons0 && latLons0.length > 1) {
-          const poly0 = L.polyline(latLons0, {
-            color: routeColor,
-            weight: 4,
-            opacity: 0.9,
-          });
-          polylinesGroup.addLayer(poly0);
-
-          // Arrow markers for Direction 0
-          for (let i = 0; i < latLons0.length - 1; i += 2) {
-            const p1 = latLons0[i];
-            const p2 = latLons0[i + 1];
-            const midLat = (p1[0] + p2[0]) / 2;
-            const midLon = (p1[1] + p2[1]) / 2;
-            const angle = (Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180) / Math.PI;
-
-            const arrowMarker = L.marker([midLat, midLon], {
+      // Zeichnet EINE Linie + optional schlanke Fahrtrichtungspfeile
+      const drawLine = (trips: GTFSTrip[], color: string, withArrows: boolean) => {
+        const latLons = getPolylineForDirection(trips, false);
+        if (!latLons || latLons.length < 2) return;
+        polylinesGroup.addLayer(L.polyline(latLons, { color, weight: 5, opacity: 0.9 }));
+        if (!withArrows) return;
+        const step = Math.max(2, Math.round((latLons.length - 1) / 6));
+        for (let i = 0; i + 1 < latLons.length; i += step) {
+          const p1 = latLons[i];
+          const p2 = latLons[i + 1];
+          const angle = (Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180) / Math.PI;
+          polylinesGroup.addLayer(
+            L.marker([(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2], {
               icon: L.divIcon({
                 className: "dir-arrow",
-                html: `<div style="
-                  transform: rotate(${angle}deg);
-                  color: ${routeColor};
-                  font-size: 13px;
-                  font-weight: 900;
-                  text-shadow: 0 0 4px white, 0 0 4px white;
-                  line-height: 1;
-                ">▶</div>`,
-                iconSize: [14, 14],
-                iconAnchor: [7, 7],
+                html: `<div style="transform:rotate(${angle}deg);color:${color};font-size:10px;line-height:1;text-shadow:0 0 3px #fff,0 0 3px #fff;">▶</div>`,
+                iconSize: [10, 10],
+                iconAnchor: [5, 5],
               }),
               interactive: false,
-            });
-            polylinesGroup.addLayer(arrowMarker);
-          }
+            })
+          );
         }
-      }
+      };
 
-      // Dir 1 (Rückfahrt)
-      if ((directionFilter === "BOTH" || directionFilter === "1") && hasDir1) {
-        const isOffset = directionFilter === "BOTH";
-        const latLons1 = getPolylineForDirection(dir1Trips, isOffset);
-        if (latLons1 && latLons1.length > 1) {
-          const poly1 = L.polyline(latLons1, {
-            color: directionFilter === "BOTH" ? "#2563EB" : routeColor,
-            weight: 4,
-            opacity: 0.9,
-            dashArray: directionFilter === "BOTH" ? "8, 6" : undefined,
-          });
-          polylinesGroup.addLayer(poly1);
-
-          // Arrow markers for Direction 1
-          for (let i = 0; i < latLons1.length - 1; i += 2) {
-            const p1 = latLons1[i];
-            const p2 = latLons1[i + 1];
-            const midLat = (p1[0] + p2[0]) / 2;
-            const midLon = (p1[1] + p2[1]) / 2;
-            const angle = (Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180) / Math.PI;
-
-            const arrowMarker = L.marker([midLat, midLon], {
-              icon: L.divIcon({
-                className: "dir-arrow",
-                html: `<div style="
-                  transform: rotate(${angle}deg);
-                  color: ${directionFilter === "BOTH" ? "#2563EB" : routeColor};
-                  font-size: 13px;
-                  font-weight: 900;
-                  text-shadow: 0 0 4px white, 0 0 4px white;
-                  line-height: 1;
-                ">▶</div>`,
-                iconSize: [14, 14],
-                iconAnchor: [7, 7],
-              }),
-              interactive: false,
-            });
-            polylinesGroup.addLayer(arrowMarker);
-          }
-        }
+      if (directionFilter === "BOTH") {
+        // Übersichtlich: EINE saubere Linie über den gesamten Linienverlauf
+        drawLine([...dir0Trips, ...dir1Trips], ROUTE_LINE_COLOR, false);
+      } else if (directionFilter === "0" && hasDir0) {
+        drawLine(dir0Trips, DIR0_COLOR, true);
+      } else if (directionFilter === "1" && hasDir1) {
+        drawLine(dir1Trips, DIR1_COLOR, true);
       }
     }
 
@@ -594,7 +544,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       const style = stopStyle(isTrain, isSelected, isGap, isRemoved, isAdded, isAsymmetric);
       const special = isSelected || isGap || isRemoved || isAdded || isAsymmetric;
-      if (dense && !special) style.radius = 3.5;
+      // In der Gesamtansicht (tausende Halte) die Punktwolke dezent halten
+      if (dense && !special) {
+        style.radius = 2.6;
+        style.weight = 0.75;
+        style.fillOpacity = 0.6;
+      }
 
       const marker = L.circleMarker([stop.stop_lat, stop.stop_lon], style);
 
@@ -948,6 +903,56 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           )}
         </div>
       )}
+
+      {/* Kontextabhängige Legende: zeigt genau die Marker-/Linien-Zustände,
+          die aktuell auf der Karte sichtbar sind. Blendet aus bei Halte-Auswahl. */}
+      {!selectedStop && (() => {
+        const dot = (color: string, label: string, stroke = "#ffffff") => ({ kind: "dot" as const, color, label, stroke });
+        const line = (color: string, label: string, dashed = false) => ({ kind: "line" as const, color, label, dashed });
+        const items: Array<
+          | { kind: "dot"; color: string; label: string; stroke: string }
+          | { kind: "line"; color: string; label: string; dashed: boolean }
+        > = [dot("#16A34A", "Bus"), dot("#0066CC", "Bahn / Zug")];
+
+        if (selectedRouteId !== "ALL") {
+          if (directionFilter === "BOTH") items.push(line(ROUTE_LINE_COLOR, "Linienverlauf"));
+          else if (directionFilter === "0" && hasDir0) items.push(line(DIR0_COLOR, "Hinfahrt"));
+          else if (directionFilter === "1" && hasDir1) items.push(line(DIR1_COLOR, "Rückfahrt"));
+        }
+        if (asymmetricStopsInfo.length > 0) items.push(dot("#D97706", "nur eine Richtung", "#FEF3C7"));
+        if (gapStopStems && gapStopStems.size > 0) items.push(dot("#EA580C", "Bedienungslücke"));
+        if (removedStopStems && removedStopStems.size > 0) items.push(dot("#DC2626", "entfällt"));
+        if (addedStopStems && addedStopStems.size > 0) items.push(dot("#16A34A", "neu", "#065F46"));
+
+        // höher setzen, wenn unten das Richtungs-Panel steht
+        const raised = selectedRouteId !== "ALL" && hasMultipleDirections;
+        return (
+          <div
+            className={`absolute ${raised ? "bottom-16" : "bottom-4"} left-3 z-[600] bg-white/95 backdrop-blur rounded-md border border-gray-200 shadow-sm px-2.5 py-1.5 text-meta text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1 max-w-[calc(100%-1.5rem)]`}
+          >
+            {items.map((it, i) =>
+              it.kind === "dot" ? (
+                <span key={i} className="flex items-center gap-1 whitespace-nowrap">
+                  <span className="w-2.5 h-2.5 rounded-full shadow-sm shrink-0" style={{ backgroundColor: it.color, border: `1.5px solid ${it.stroke}` }} />
+                  {it.label}
+                </span>
+              ) : (
+                <span key={i} className="flex items-center gap-1 whitespace-nowrap">
+                  <span
+                    className="w-4 h-[3px] rounded shrink-0"
+                    style={
+                      it.dashed
+                        ? { backgroundImage: `repeating-linear-gradient(90deg, ${it.color} 0 4px, transparent 4px 7px)` }
+                        : { backgroundColor: it.color }
+                    }
+                  />
+                  {it.label}
+                </span>
+              )
+            )}
+          </div>
+        );
+      })()}
 
       {/* Selected Stop Floating Drawer */}
       {selectedStop && (
