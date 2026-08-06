@@ -1,36 +1,585 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ Schrift
+   Inter, selbst gehostet (offline-tauglich fürs Amtsnetz). Variable Font =
+   eine Datei je Subset, alle Gewichte (auch krumme wie 550/620). */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* font-sans überall auf Inter umstellen (App + body nutzen font-sans) */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ============================================================================
+   Design-System — Landkreis Heilbronn Fahrplan-Analyse
+   Ruhig, professionell, datenorientiert. Signalrot sparsam als Akzent.
+   ========================================================================== */
+
+:root {
+  /* Marke */
+  --brand: #e30613;
+  --brand-hover: #c20612;
+  --brand-soft: #fef2f2;
+  --brand-ring: rgba(227, 6, 19, 0.16);
+
+  /* Neutrale — ruhig, luftig (Linear/Vercel-Anmutung) */
+  --bg: #fbfbfc;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --border: #eef0f3;
+  --border-strong: #e2e5ea;
+  --text: #1a1f27;
+  --text-secondary: #626b78;
+  --text-muted: #9aa2af;
+
+  /* Semantisch */
+  --bus: #15a34a;
+  --rail: #2563eb;
+  --route: #4f46e5;
+  --gap: #ea580c;
+  --added: #16a34a;
+  --removed: #dc2626;
+  --warn: #d97706;
+
+  /* Easing (kräftiger als CSS-Default) */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Elevation — sehr weich, kaum wahrnehmbar */
+  --shadow-xs: 0 1px 2px rgba(20, 24, 31, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 24, 31, 0.04), 0 1px 2px rgba(20, 24, 31, 0.03);
+  --shadow-md: 0 2px 8px rgba(20, 24, 31, 0.05), 0 6px 24px rgba(20, 24, 31, 0.06);
+  --shadow-lg: 0 8px 40px rgba(20, 24, 31, 0.1);
+
+  --radius: 16px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection {
+  background: var(--brand-ring);
+  color: var(--brand-hover);
+}
+
+/* Fokus: sichtbar, aber ruhig (weiches Blau statt hartem Rot) */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, #3ba4f5 65%, transparent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+/* Maus-Klick auf Buttons/Tabs zeigt keinen Fokus-Rahmen (nur Tastatur) */
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Jeder Klick-/Druck-Kontrolle ein feines Press-Feedback */
+button:not(:disabled),
+[role="button"] {
+  transition: transform 140ms var(--ease-out), background-color 140ms ease,
+    border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+button:not(:disabled):active,
+[role="button"]:active {
+  transform: scale(0.975);
+}
+
+/* Form-Controls: leicht eingelassen ("Well"), einheitlicher weicher Fokus.
+   Unlayered → überschreibt uneinheitliche Tailwind-Fokusringe für ein
+   konsistentes, hochwertiges Material. */
+input[type="text"],
+input[type="search"],
+input[type="date"],
+input[type="time"],
+input[type="number"],
+textarea {
+  box-shadow: inset 0 1px 2px rgba(18, 44, 82, 0.06);
+  transition: box-shadow 160ms var(--ease-out), border-color 160ms ease;
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, #3ba4f5 55%, #ffffff);
+  box-shadow: inset 0 1px 2px rgba(18, 44, 82, 0.05), 0 0 0 3.5px rgba(59, 164, 245, 0.16);
+}
+
+/* ------------------------------------------------------------------ Typografie */
 @layer utilities {
-  .text-heading {
-    font-size: 14px;
+  .text-display {
+    font-size: 34px;
     font-weight: 600;
-    line-height: 1.4;
+    letter-spacing: -0.028em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .text-title {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    line-height: 1.25;
+    color: var(--text);
+  }
+  .text-heading {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    line-height: 1.35;
   }
   .text-body {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 400;
-    line-height: 1.5;
+    line-height: 1.55;
   }
   .text-meta {
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 400;
-    color: #6b7280;
-    line-height: 1.4;
+    color: var(--text-secondary);
+    line-height: 1.45;
   }
   .text-data {
+    font-size: 14px;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+  }
+  .text-label {
     font-size: 13px;
     font-weight: 500;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.4;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-secondary);
   }
 }
 
+/* ------------------------------------------------------------------ Komponenten */
+@layer components {
+  /* Konvexe, "von oben beleuchtete" Oberfläche */
+  .card {
+    background: linear-gradient(180deg, #ffffff 0%, #fcfdfe 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 1px 2px rgba(18, 44, 82, 0.04),
+      0 6px 20px rgba(18, 44, 82, 0.05);
+  }
+
+  /* Konkaver "Well" — eingelassene Behälter (Inputs, Tracks, Log-Bereiche) */
+  .well {
+    background: linear-gradient(180deg, #f5f7fa 0%, #fafbfc 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: inset 0 1.5px 3px rgba(18, 44, 82, 0.07), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  }
+
+  /* Dimensionale Linien-Badges (L1, L2 …) — leicht konvex */
+  .line-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(180deg, #333a45 0%, #171b22 100%);
+    border: 1px solid #0d1015;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 1.5px rgba(0, 0, 0, 0.22);
+    text-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.3);
+  }
+  .line-badge-green {
+    color: #fff;
+    background: linear-gradient(180deg, #34c07d 0%, #14a04a 100%);
+    border: 1px solid #0d823b;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 1.5px rgba(0, 0, 0, 0.16);
+    text-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.18);
+  }
+  .line-badge-blue {
+    color: #fff;
+    background: linear-gradient(180deg, #4aa8f7 0%, #2472db 100%);
+    border: 1px solid #1c5fbf;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 1.5px rgba(0, 0, 0, 0.16);
+    text-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.18);
+  }
+  /* Weiches, konvexes Status-Chip */
+  .chip-soft {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 1.5px rgba(18, 44, 82, 0.08);
+    border: 1px solid rgba(18, 44, 82, 0.06);
+  }
+  /* Beleuchtete Kopfleiste für aufklappbare Panels */
+  .panel-head {
+    background: linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+    transition: background 160ms ease;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .panel-head:hover {
+      background: linear-gradient(180deg, #ffffff 0%, #eef1f6 100%);
+    }
+  }
+
+  /* Farbiges Icon-Badge für Sektions-Header (--c = Akzentfarbe) */
+  .section-badge {
+    --c: var(--brand);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 10px;
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) 12%, #ffffff);
+    border: 1px solid color-mix(in srgb, var(--c) 22%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(18, 44, 82, 0.05);
+  }
+
+  .card-interactive {
+    transition: box-shadow 180ms var(--ease-out), border-color 180ms ease,
+      transform 180ms var(--ease-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .card-interactive:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--border-strong);
+    }
+  }
+
+  /* Sanfter, gestaffelter Auftritt (nur beim ersten Rendern) */
+  .rise {
+    animation: rise 420ms var(--ease-out) both;
+  }
+  .stagger > * {
+    animation: rise 420ms var(--ease-out) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 45ms; }
+  .stagger > *:nth-child(3) { animation-delay: 90ms; }
+  .stagger > *:nth-child(4) { animation-delay: 135ms; }
+  .stagger > *:nth-child(5) { animation-delay: 180ms; }
+  .stagger > *:nth-child(6) { animation-delay: 225ms; }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------------ Aqua-Gel-Buttons
+   Glossy „Wassertropfen"-Look: heller Verlauf oben → satter unten, weißes
+   Zentrum-Glow, Glanzlicht oben, heller Außenring, feine Kontur, weicher
+   Schatten, embosstes weißes Icon. Farbe über --gel (Basis-Hue) steuerbar. */
+@layer components {
+  .gel {
+    --gel: #3ba4f5;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #fff;
+    font-weight: 620;
+    letter-spacing: 0.005em;
+    cursor: pointer;
+    border-radius: 999px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    border: 1px solid color-mix(in srgb, var(--gel) 62%, #5b7ea6);
+    background:
+      radial-gradient(115% 95% at 50% 9%, rgba(255, 255, 255, 0.66) 0%, color-mix(in srgb, var(--gel) 30%, rgba(255, 255, 255, 0.25)) 26%, rgba(255, 255, 255, 0) 50%),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--gel) 66%, #ffffff) 0%,
+        color-mix(in srgb, var(--gel) 92%, #ffffff) 46%,
+        color-mix(in srgb, var(--gel) 100%, #17497f) 100%
+      );
+    box-shadow:
+      inset 0 1.5px 1.5px rgba(255, 255, 255, 0.95),
+      inset 0 -10px 16px color-mix(in srgb, var(--gel) 45%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--gel) 16%, #ffffff),
+      0 12px 22px color-mix(in srgb, var(--gel) 40%, transparent),
+      0 3px 7px rgba(18, 44, 82, 0.16);
+    /* Weiße Schrift braucht auf dem hellen Glanz einen echten dunklen Rundum-Umriss
+       (liest auch dort, wo der Top-Glanz fast weiß ist) plus etwas Tiefe. */
+    text-shadow: 0 0 2px rgba(2, 20, 45, 0.7), 0 1px 2px rgba(2, 20, 45, 0.55);
+    transition: transform 140ms var(--ease-out), box-shadow 180ms var(--ease-out), filter 140ms ease;
+  }
+  /* Helle/neutrale Gel-Variante für Sekundär-Buttons (dieselbe Material-Familie) */
+  .gel-light {
+    color: #384657;
+    font-weight: 560;
+    border: 1px solid rgba(18, 44, 82, 0.1);
+    background:
+      radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 60%),
+      linear-gradient(180deg, #ffffff 0%, #eef1f5 100%);
+    box-shadow:
+      inset 0 1px 0.5px rgba(255, 255, 255, 1),
+      inset 0 -3px 6px rgba(90, 110, 140, 0.1),
+      0 1px 2px rgba(18, 44, 82, 0.06),
+      0 4px 10px rgba(18, 44, 82, 0.07);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .gel-light::before {
+    opacity: 0.55;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .gel-light:hover {
+      filter: none;
+      background: radial-gradient(120% 120% at 50% 0%, #fff 0%, rgba(255, 255, 255, 0) 60%), linear-gradient(180deg, #ffffff 0%, #e9edf2 100%);
+      box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 1), inset 0 -3px 6px rgba(90, 110, 140, 0.12), 0 2px 4px rgba(18, 44, 82, 0.08), 0 6px 14px rgba(18, 44, 82, 0.1);
+    }
+  }
+  .gel-light:active {
+    transform: scale(0.975) translateY(0.5px);
+    box-shadow: inset 0 2px 5px rgba(90, 110, 140, 0.2), 0 1px 2px rgba(18, 44, 82, 0.06);
+  }
+  /* Glanzlicht oben (Glaskuppel) */
+  .gel::before {
+    content: "";
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    top: 5%;
+    height: 42%;
+    border-radius: 50%;
+    background: radial-gradient(100% 100% at 50% 0%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 74%);
+    pointer-events: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .gel:hover {
+      filter: brightness(1.05) saturate(1.03);
+      box-shadow:
+        inset 0 2px 2px rgba(255, 255, 255, 0.95),
+        inset 0 -10px 16px color-mix(in srgb, var(--gel) 40%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--gel) 22%, #ffffff),
+        0 16px 28px color-mix(in srgb, var(--gel) 48%, transparent),
+        0 4px 9px rgba(18, 44, 82, 0.18);
+    }
+  }
+  .gel:active {
+    transform: scale(0.97) translateY(1px);
+    box-shadow:
+      inset 0 2px 6px color-mix(in srgb, var(--gel) 55%, transparent),
+      inset 0 1px 1px rgba(255, 255, 255, 0.6),
+      0 0 0 3px color-mix(in srgb, var(--gel) 16%, #ffffff),
+      0 4px 10px color-mix(in srgb, var(--gel) 36%, transparent);
+  }
+  .gel:disabled {
+    filter: grayscale(0.4) opacity(0.6);
+    cursor: not-allowed;
+  }
+  .gel > * {
+    position: relative;
+    z-index: 1;
+  }
+  /* Pill-Variante (Text-Buttons) */
+  .gel-pill {
+    padding: 0.6rem 1.15rem;
+    font-size: 13px;
+  }
+  /* Runde FAB/Icon-Variante */
+  .gel-fab {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+  }
+  .gel svg {
+    filter: drop-shadow(0 1.5px 1.5px rgba(40, 100, 165, 0.4));
+  }
+  /* Glossy weißer Thumb für Segmented-Controls & Tab-Indikator (iOS-Look) */
+  .pill-thumb {
+    background: linear-gradient(180deg, #ffffff 0%, #f2f5f9 100%);
+    border: 1px solid rgba(18, 44, 82, 0.07);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 1),
+      0 1px 2px rgba(18, 44, 82, 0.09),
+      0 2px 6px rgba(18, 44, 82, 0.06);
+  }
+  /* Segmented-Control-Track */
+  .seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--border) 60%, #e7ebf1);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 3px rgba(18, 44, 82, 0.06);
+  }
+  .seg-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 550;
+    color: var(--text-secondary);
+    cursor: pointer;
+    z-index: 1;
+    transition: color 160ms ease;
+  }
+  .seg-item[data-active="true"] {
+    color: var(--text);
+  }
+  .seg-item:active {
+    transform: scale(0.95);
+  }
+  .seg-item {
+    transition: color 160ms ease, transform 120ms var(--ease-out);
+  }
+
+  /* Wiederverwendbares Press-Feedback für flache Buttons (nicht-Gel) –
+     dezentes Eindrücken auf Klick, wie bei nativen Controls. */
+  .tap {
+    transition: transform 130ms var(--ease-out), background-color 140ms ease, color 140ms ease;
+  }
+  .tap:active {
+    transform: scale(0.97);
+  }
+
+  /* Farbvarianten (etwas tiefer → knackige weiße Schrift) */
+  .gel-blue { --gel: #3ba4f5; }
+  .gel-aqua { --gel: #56b7ff; } /* exakt wie die Vorlage — für Icon-only FABs */
+  .gel-red { --gel: #ee454d; }
+  .gel-green { --gel: #23b06d; }
+  .gel-amber { --gel: #ef9a2e; }
+  .gel-slate { --gel: #8398b0; }
+  .gel-indigo { --gel: #5a4ce4; }
+}
+
+/* ------------------------------------------------------------------ Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--surface);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #c4c9d1;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Leaflet-Popups an das Design angleichen */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border) !important;
+}
+.leaflet-container {
+  font: inherit !important;
+}
+.dir-arrow {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Leaflet Zoom-Controls im Material-Look */
+.leaflet-control-zoom {
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-md) !important;
+}
+.leaflet-control-zoom a {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f5f9 100%) !important;
+  color: #48505c !important;
+  border: none !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 32px !important;
+  font-size: 18px !important;
+  transition: background 140ms ease;
+}
+.leaflet-control-zoom a:first-child {
+  border-bottom: 1px solid var(--border) !important;
+}
+.leaflet-control-zoom a:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e9edf2 100%) !important;
+  color: #1a1f27 !important;
+}
+.leaflet-bar {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ------------------------------------------------------------------ Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .rise,
+  .stagger > * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ Print */
 @media print {
   body {
     background: white !important;
     color: black !important;
   }
-  .no-print, nav, footer, button, input, select, .no-print-area {
+  .no-print,
+  nav,
+  footer,
+  button,
+  input,
+  select,
+  .no-print-area {
     display: none !important;
   }
   .print-only {
@@ -43,16 +592,17 @@
     border-collapse: collapse !important;
     width: 100% !important;
   }
-  th, td {
+  th,
+  td {
     border: 1px solid #999 !important;
     padding: 6px 10px !important;
     font-size: 10pt !important;
     color: black !important;
   }
-  .bg-white, .bg-gray-50, .bg-emerald-50, .bg-red-50, .bg-amber-50 {
+  .card,
+  .bg-white,
+  .bg-gray-50 {
     background-color: transparent !important;
-  }
-  .shadow-xs, .shadow-md, .border {
     box-shadow: none !important;
   }
 }
@@ -60,4 +610,3 @@
 .print-only {
   display: none;
 }
-

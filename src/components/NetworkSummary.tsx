@@ -1,91 +1,76 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { animate, useReducedMotion } from "motion/react";
 import { GTFSDataSet } from "../types";
 import { ymdToIso } from "../lib/gtfsEngine";
-import { Bus, TrainFront, MapPin, Route, Timer, AlertTriangle, CalendarRange } from "lucide-react";
+import { Bus, MapPin, Route, Timer } from "lucide-react";
 
 interface Props {
   ds1: GTFSDataSet | null;
   ds2: GTFSDataSet | null;
 }
 
-const fmt = (n: number | null | undefined) =>
-  n === null || n === undefined ? "–" : n.toLocaleString("de-DE");
+/** Zahl, die beim Erscheinen von 0 auf den Zielwert hochzählt. */
+const CountUp: React.FC<{ value: number; suffix?: string }> = ({ value, suffix }) => {
+  const reduce = useReducedMotion();
+  const [display, setDisplay] = useState(reduce ? value : 0);
+  useEffect(() => {
+    if (reduce) {
+      setDisplay(value);
+      return;
+    }
+    const controls = animate(0, value, {
+      duration: 0.9,
+      ease: [0.22, 1, 0.36, 1],
+      onUpdate: (v) => setDisplay(v),
+    });
+    return () => controls.stop();
+  }, [value, reduce]);
+  return (
+    <>
+      {Math.round(display).toLocaleString("de-DE")}
+      {suffix ? <span className="text-[15px] font-medium text-gray-400 ml-0.5">{suffix}</span> : null}
+    </>
+  );
+};
 
-/** Kompakte Netz-Kennzahlen aus der vorberechneten Analyse. */
+/** Netz-Kennzahlen. Klare Hierarchie: Bestandsdaten ruhig, Befund hervorgehoben,
+ *  Metadaten klein. Farbe trägt Bedeutung (nur der Befund ist farbig). */
 export const NetworkSummary: React.FC<Props> = ({ ds1, ds2 }) => {
   const ds = ds2 || ds1;
   const a = ds?.analysis?.summary;
   if (!ds || !a) return null;
 
-  const railCombined = a.tramCount + a.railCount;
-
-  const tiles = [
-    {
-      icon: <Route className="w-4 h-4" />,
-      label: "Linien",
-      value: fmt(a.routeCount),
-      sub: `${a.busCount} Bus · ${railCombined} Bahn`,
-      accent: "text-red-600 bg-red-50",
-    },
-    {
-      icon: <MapPin className="w-4 h-4" />,
-      label: "Haltestellen",
-      value: fmt(a.stopCount),
-      sub: `${fmt(a.stopGroupCount)} Knoten`,
-      accent: "text-emerald-600 bg-emerald-50",
-    },
-    {
-      icon: <Bus className="w-4 h-4" />,
-      label: "Fahrten werktags",
-      value: fmt(a.weekdayTripCount),
-      sub: `Sa ${fmt(a.saturdayTripCount)} · So ${fmt(a.sundayTripCount)}`,
-      accent: "text-blue-600 bg-blue-50",
-    },
-    {
-      icon: <Timer className="w-4 h-4" />,
-      label: "Ø HVZ-Takt",
-      value: a.avgWeekdayHeadway ? `${a.avgWeekdayHeadway}` : "–",
-      sub: a.avgWeekdayHeadway ? "Minuten (Spitze)" : "keine Daten",
-      accent: "text-violet-600 bg-violet-50",
-    },
-    {
-      icon: <AlertTriangle className="w-4 h-4" />,
-      label: "Bedienungslücken",
-      value: fmt(a.gapCount),
-      sub: `${fmt(a.nightGapCount)} abends · ${fmt(a.sundayGapCount)} sonntags`,
-      accent: "text-amber-600 bg-amber-50",
-    },
-    {
-      icon: <CalendarRange className="w-4 h-4" />,
-      label: "Gültigkeit",
-      value: a.feedStart ? ymdToIso(a.feedStart).slice(5) : "–",
-      sub: a.feedEnd ? `bis ${ymdToIso(a.feedEnd)}` : "unbekannt",
-      accent: "text-gray-600 bg-gray-100",
-    },
+  const stats: { icon: typeof Bus; label: string; num?: number; suffix?: string; text?: string }[] = [
+    { icon: Route, label: "Linien", num: a.routeCount },
+    { icon: MapPin, label: "Haltestellen", num: a.stopCount },
+    { icon: Bus, label: "Fahrten Mo–Fr", num: a.weekdayTripCount },
+    { icon: Timer, label: "Ø HVZ-Takt", num: a.avgWeekdayHeadway ?? undefined, suffix: "min", text: a.avgWeekdayHeadway ? undefined : "–" },
   ];
 
+  const validity = a.feedEnd ? `gültig bis ${ymdToIso(a.feedEnd)}` : "";
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3">
-      <div className="flex items-center justify-between mb-2.5 px-1">
-        <div className="flex items-center gap-2 text-heading text-gray-900">
-          <TrainFront className="w-4 h-4 text-red-600" />
-          Netz-Überblick
-        </div>
-        <span className="text-meta text-gray-400 truncate max-w-[45%]" title={a.agencies.join(", ")}>
-          {a.agencies.length} Verkehrsunternehmen
-        </span>
+    <div className="card p-6">
+      <div className="flex items-baseline justify-between gap-3 mb-5">
+        <h2 className="text-heading text-gray-900">Netz-Überblick</h2>
+        {validity && <span className="text-meta tabular-nums shrink-0">{validity}</span>}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {tiles.map((t) => (
-          <div key={t.label} className="rounded-md border border-gray-100 bg-gray-50/50 p-2.5">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md ${t.accent}`}>{t.icon}</span>
-              <span className="text-meta text-gray-500 leading-tight">{t.label}</span>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-6">
+        {stats.map((t) => {
+          const Icon = t.icon;
+          return (
+            <div key={t.label} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <Icon className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="text-label leading-tight truncate">{t.label}</span>
+              </div>
+              <div className="text-display text-gray-900">
+                {t.num !== undefined ? <CountUp value={t.num} suffix={t.suffix} /> : t.text}
+              </div>
             </div>
-            <div className="text-gray-900 font-semibold tabular-nums text-lg leading-none">{t.value}</div>
-            <div className="text-meta text-gray-400 mt-0.5 truncate" title={t.sub}>{t.sub}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

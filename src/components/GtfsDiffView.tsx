@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { motion } from "motion/react";
 import { GTFSDataSet, DayType, DayFrequency, RouteFrequencyRow } from "../types";
 import { analyzeStopsDiff, downloadCSV } from "../lib/gtfsParser";
 import { ymdToIso } from "../lib/gtfsEngine";
@@ -16,7 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
-  CalendarDays,
 } from "lucide-react";
 
 interface GtfsDiffViewProps {
@@ -49,7 +49,9 @@ export const GtfsDiffView: React.FC<GtfsDiffViewProps> = ({
 
   const isTwoDatasets = Boolean(ds1 && ds2);
   const [isTaktOpen, setIsTaktOpen] = useState(true);
-  const [isGapsOpen, setIsGapsOpen] = useState(true);
+  // Bedienungslücken sind kein Kern-Anwendungsfall → standardmäßig eingeklappt,
+  // sekundär, nicht im Hauptfokus.
+  const [isGapsOpen, setIsGapsOpen] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(isTwoDatasets);
 
   useEffect(() => {
@@ -265,13 +267,10 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 no-print">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-heading text-amber-600 mb-0.5">
-              <GitCompare className="w-4 h-4" />
-              GTFS Fahrplan-Analyse
-            </div>
+      <div className="card p-4 no-print">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="section-badge shrink-0" style={{ ["--c" as any]: "var(--warn)" }}><GitCompare className="w-4 h-4" /></span>
             <h2 className="text-heading text-gray-900">
               {ds1 ? ds1.name : "HNV Fahrplan"}{" "}
               {ds2 ? (
@@ -279,23 +278,17 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
                   <span className="text-gray-400 font-normal">vs.</span> {ds2.name}
                 </>
               ) : (
-                <span className="text-meta text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md ml-1">(Einzelnetz)</span>
+                <span className="text-meta text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md ml-1">Einzelnetz</span>
               )}
             </h2>
-            {repDates && (
-              <p className="text-meta mt-1 flex items-center gap-1.5 text-gray-500">
-                <CalendarDays className="w-3 h-3 text-gray-400" />
-                Analyse-Stichtage: Werktag {ymdToIso(repDates.weekday)} · Sa {ymdToIso(repDates.saturday)} · So {ymdToIso(repDates.sunday)}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handlePrint} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-md text-body font-medium transition-colors cursor-pointer">
+            <button onClick={handlePrint} className="gel gel-light text-body px-3 py-1.5">
               <Printer className="w-3.5 h-3.5 text-gray-600" />
               <span>Drucken</span>
             </button>
             {onStartAIChatWithFacts && (
-              <button onClick={handleStartAIChat} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-body font-medium transition-colors cursor-pointer">
+              <button onClick={handleStartAIChat} className="gel gel-blue text-body px-3 py-1.5">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>KI befragen</span>
               </button>
@@ -305,10 +298,10 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
       </div>
 
       {/* SECTION 1: Takt-Analyse */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <button onClick={() => setIsTaktOpen(!isTaktOpen)} className="w-full p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2 text-left hover:bg-gray-100 transition-colors cursor-pointer">
+      <div className="card overflow-hidden">
+        <button onClick={() => setIsTaktOpen(!isTaktOpen)} className={`panel-head w-full p-4 flex items-center justify-between gap-2 text-left cursor-pointer ${isTaktOpen ? "border-b border-[var(--border)]" : ""}`}>
           <div className="flex items-center gap-2">
-            <Bus className="w-4 h-4 text-red-600 shrink-0" />
+            <span className="section-badge shrink-0" style={{ ["--c" as any]: "var(--brand)" }}><Bus className="w-4 h-4" /></span>
             <div>
               <h3 className="text-heading text-gray-900">1. Takt-Analyse pro Linie</h3>
               <p className="text-meta">{frequencyData.length} Linien · {dayLabel(dayType)}</p>
@@ -320,19 +313,25 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
         {isTaktOpen && (
           <div className="p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 no-print">
-              <div className="flex items-center bg-gray-100 p-0.5 rounded-md border border-gray-200 text-body">
-                {(["weekday", "saturday", "sunday"] as DayType[]).map((d) => (
-                  <button key={d} onClick={() => setDayType(d)} className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${dayType === d ? "bg-white text-gray-900 font-medium shadow-xs" : "text-gray-600 hover:text-gray-900"}`}>
-                    {dayLabel(d)}
-                  </button>
-                ))}
+              <div className="seg">
+                {(["weekday", "saturday", "sunday"] as DayType[]).map((d) => {
+                  const active = dayType === d;
+                  return (
+                    <button key={d} onClick={() => setDayType(d)} data-active={active} className="seg-item">
+                      {active && (
+                        <motion.span layoutId="daytype-thumb" className="absolute inset-0 rounded-[9px] pill-thumb" transition={{ type: "spring", stiffness: 500, damping: 36 }} />
+                      )}
+                      <span className="relative z-10">{dayLabel(d)}</span>
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input type="text" placeholder="Linie…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-7 pr-2 py-1 bg-white border border-gray-200 rounded-md text-body focus:outline-none w-28" />
                 </div>
-                <button onClick={handleExportFrequencyCSV} className="p-1.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-md cursor-pointer" title="CSV Export">
+                <button onClick={handleExportFrequencyCSV} className="gel gel-light p-1.5" title="CSV Export">
                   <Download className="w-3.5 h-3.5 text-emerald-600" />
                 </button>
               </div>
@@ -342,7 +341,7 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
               <table className="w-full text-left border-collapse text-body">
                 <thead>
                   <tr className="text-meta sticky top-0 bg-white shadow-[0_1px_0_0_#f3f4f6]">
-                    <th className="p-2">Linie</th>
+                    <th className="p-2 w-14">Linie</th>
                     <th className="p-2">Verlauf</th>
                     {ds1 && <th className="p-2">{ds2 ? "Fahrplan 1" : "Fahrten"}</th>}
                     {ds2 && <th className="p-2">Fahrplan 2</th>}
@@ -356,10 +355,10 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
                     return (
                       <tr key={row.routeId} className="hover:bg-gray-50 transition-colors">
                         <td className="p-2 font-medium align-top">
-                          <span className="px-2 py-0.5 bg-gray-900 text-white rounded-sm text-data">L{row.shortName}</span>
+                          <span className="line-badge px-2 py-0.5 rounded-md text-data">{row.shortName}</span>
                         </td>
-                        <td className="p-2 text-body text-gray-700 max-w-[150px] truncate align-top" title={row.longName}>
-                          {row.longName || "Linienweg"}
+                        <td className="p-2 text-body text-gray-700 max-w-[260px] truncate align-top" title={row.longName || undefined}>
+                          {row.longName || <span className="text-gray-300">–</span>}
                         </td>
                         {ds1 && (
                           <td className="p-2 align-top min-w-[110px]">
@@ -373,7 +372,7 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
                         )}
                         {ds1 && ds2 && (
                           <td className="p-2 align-top">
-                            <span className={`text-meta px-1.5 py-0.5 rounded-sm inline-block ${row.statusColor}`}>{row.statusText}</span>
+                            <span className={`chip-soft text-meta px-2 py-0.5 ${row.statusColor}`}>{row.statusText}</span>
                           </td>
                         )}
                       </tr>
@@ -387,10 +386,10 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
       </div>
 
       {/* SECTION 2: Bedienungslücken */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div role="button" tabIndex={0} onClick={() => setIsGapsOpen(!isGapsOpen)} className="w-full p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2 text-left hover:bg-gray-100 transition-colors cursor-pointer">
+      <div className="card overflow-hidden">
+        <div role="button" tabIndex={0} onClick={() => setIsGapsOpen(!isGapsOpen)} className={`panel-head w-full p-4 flex items-center justify-between gap-2 text-left cursor-pointer ${isGapsOpen ? "border-b border-[var(--border)]" : ""}`}>
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="section-badge shrink-0" style={{ ["--c" as any]: "var(--text-secondary)" }}><AlertTriangle className="w-4 h-4" /></span>
             <div>
               <h3 className="text-heading text-gray-900">2. Bedienungslücken (Abend & Sonntag)</h3>
               <p className="text-meta">{activeGapCount} Haltestellen mit Frühschluss (&lt; 20 Uhr) oder Sonntagslücke</p>
@@ -398,7 +397,7 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
           </div>
           <div className="flex items-center gap-2">
             {onShowGapsOnMap && activeGapCount > 0 && (
-              <button type="button" onClick={handleShowGapsOnMapClick} className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-md text-body font-medium border border-amber-200 transition-colors cursor-pointer">Auf Karte</button>
+              <button type="button" onClick={handleShowGapsOnMapClick} className="gel gel-light text-body px-2.5 py-1">Auf Karte</button>
             )}
             {isGapsOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
           </div>
@@ -411,7 +410,7 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
                 <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input type="text" placeholder="Haltestelle filtern…" value={gapSearchTerm} onChange={(e) => setGapSearchTerm(e.target.value)} className="w-full pl-7 pr-2 py-1 bg-white border border-gray-200 rounded-md text-body focus:outline-none" />
               </div>
-              <button onClick={handleExportGapsCSV} className="p-1.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-md cursor-pointer" title="CSV Export">
+              <button onClick={handleExportGapsCSV} className="gel gel-light p-1.5" title="CSV Export">
                 <Download className="w-3.5 h-3.5 text-emerald-600" />
               </button>
             </div>
@@ -459,10 +458,10 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
 
       {/* SECTION 3: Haltestellen-Diff */}
       {stopsDiff && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div role="button" tabIndex={0} onClick={() => setIsDiffOpen(!isDiffOpen)} className="w-full p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2 text-left hover:bg-gray-100 transition-colors cursor-pointer">
+        <div className="card overflow-hidden">
+          <div role="button" tabIndex={0} onClick={() => setIsDiffOpen(!isDiffOpen)} className={`panel-head w-full p-4 flex items-center justify-between gap-2 text-left cursor-pointer ${isDiffOpen ? "border-b border-[var(--border)]" : ""}`}>
             <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="section-badge shrink-0" style={{ ["--c" as any]: "var(--bus)" }}><MapPin className="w-4 h-4" /></span>
               <div>
                 <h3 className="text-heading text-gray-900">3. Haltestellen-Diff</h3>
                 <p className="text-meta">−{stopsDiff.removedStopStems.length} entfallen · +{stopsDiff.addedStopStems.length} neu</p>
@@ -470,7 +469,7 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
             </div>
             <div className="flex items-center gap-2">
               {onShowDiffOnMap && (
-                <button type="button" onClick={handleShowDiffOnMapClick} className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-md text-body font-medium border border-emerald-200 transition-colors cursor-pointer">Auf Karte</button>
+                <button type="button" onClick={handleShowDiffOnMapClick} className="gel gel-light text-body px-2.5 py-1">Auf Karte</button>
               )}
               {isDiffOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
             </div>
@@ -515,20 +514,16 @@ Bitte fasse diese Fahrplandaten verständlich zusammen und gib Empfehlungen.`;
 };
 
 // Zelle mit Fahrtenzahl, Mini-Balken, Takt und Betriebszeit
-const FreqCell: React.FC<{ d: DayFrequency | null; maxTrips: number }> = ({ d, maxTrips }) => {
+const FreqCell: React.FC<{ d: DayFrequency | null; maxTrips: number }> = ({ d }) => {
   if (!d || d.trips === 0) return <span className="text-gray-300">—</span>;
-  const pct = Math.max(4, Math.round((d.trips / maxTrips) * 100));
   return (
-    <div>
+    <div className="leading-tight">
       <div className="flex items-baseline gap-1.5">
         <span className="text-data text-gray-900">{d.trips}</span>
         <span className="text-meta text-gray-400">Fahrten</span>
       </div>
-      <div className="h-1 bg-gray-100 rounded-full overflow-hidden my-1 max-w-[90px]">
-        <div className="h-full bg-red-500/70 rounded-full" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="text-meta text-gray-400 tabular-nums">
-        {d.headway ? `Takt ${d.headway}m · ` : ""}{d.firstDeparture}–{d.lastDeparture}
+      <div className="text-meta text-gray-400 tabular-nums mt-0.5">
+        {d.headway ? `Takt ${d.headway} min · ` : ""}{d.firstDeparture}–{d.lastDeparture}
       </div>
     </div>
   );

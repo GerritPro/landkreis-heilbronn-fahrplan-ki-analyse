@@ -21,8 +21,8 @@ export const Logo: React.FC<LogoProps> = ({
     <div className={`inline-flex items-center gap-3 select-none ${className}`}>
       {/* SVG Emblem recreating Landkreis Heilbronn Logo */}
       <svg
-        viewBox="0 0 380 150"
-        className={`${heightMap[size]} w-auto object-contain transition-transform hover:scale-102`}
+        viewBox="0 0 278 158"
+        className={`${heightMap[size]} w-auto object-contain transition-transform hover:scale-[1.02]`}
         aria-label="Landkreis Heilbronn Logo"
       >
         <g id="logo-bars">
@@ -38,13 +38,14 @@ export const Logo: React.FC<LogoProps> = ({
         </g>
         {showText && (
           <text
-            x="130"
-            y="145"
-            fontFamily="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-            fontWeight="900"
-            fontSize="25"
+            x="139"
+            y="147"
+            textAnchor="middle"
+            fontFamily="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            fontWeight="800"
+            fontSize="20"
             fill="#111827"
-            letterSpacing="0.8"
+            letterSpacing="0.3"
           >
             LANDKREIS HEILBRONN
           </text>

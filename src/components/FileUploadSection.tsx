@@ -192,7 +192,7 @@ export const FileUploadSection: React.FC<FileUploadSectionProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg p-4 border border-gray-200 mb-4 relative">
+    <div className="card p-4 mb-4 relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
@@ -206,10 +206,7 @@ export const FileUploadSection: React.FC<FileUploadSectionProps> = ({
         </div>
 
         {onStartDemoMode && (
-          <button
-            onClick={onStartDemoMode}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 rounded-md text-body font-medium transition-colors shrink-0 cursor-pointer"
-          >
+          <button onClick={onStartDemoMode} className="gel gel-light text-body px-3 py-1.5 shrink-0">
             <RefreshCw className="w-3.5 h-3.5 text-red-600" />
             HNV Demo-Fahrpläne laden
           </button>

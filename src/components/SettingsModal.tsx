@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { motion } from "motion/react";
 import { Server, CheckCircle2, AlertCircle, RefreshCw, X, Cpu } from "lucide-react";
 import { AIStatus } from "../types";
 import { fetchAIStatus } from "../lib/aiService";
@@ -48,8 +49,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-lg shadow-md border border-gray-200 max-w-lg w-full overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+        onClick={(e) => e.stopPropagation()}
+        className="card shadow-[var(--shadow-lg)] max-w-lg w-full overflow-hidden"
+      >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-gray-700" />
@@ -123,25 +136,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={handleTestConnection}
-            disabled={testing}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-body font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer"
-          >
+          <button type="button" onClick={handleTestConnection} disabled={testing} className="gel gel-light text-body px-3 py-1.5">
             <RefreshCw className={`w-3.5 h-3.5 ${testing ? "animate-spin" : ""}`} />
             Verbindung testen
           </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 bg-red-600 text-white rounded-md text-body font-medium hover:bg-red-700 transition-colors cursor-pointer"
-          >
+          <button type="button" onClick={onClose} className="gel gel-blue text-body px-4 py-1.5">
             Speichern & Schließen
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };

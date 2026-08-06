@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
+import { motion } from "motion/react";
 import L from "leaflet";
 import { GTFSDataSet, GTFSStop, GTFSRoute, GTFSTrip, GTFSStopTime } from "../types";
 import { getStopNameStem, getStopGroupKey } from "../lib/gtfsParser";
@@ -52,6 +53,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
   const polylinesGroupRef = useRef<L.LayerGroup | null>(null);
+  const svgRendererRef = useRef<L.SVG | null>(null);
+  const lastRouteKeyRef = useRef<string>("");
 
   // State
   const [selectedRouteId, setSelectedRouteId] = useState<string>("ALL");
@@ -94,6 +97,35 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       const nameB = b.route_short_name || b.route_id;
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" });
     });
+  }, [ds1, ds2]);
+
+  // Kurzbeschreibung je Linie für die Auswahl: Langname, sonst häufigste
+  // Zielbeschilderung (trip_headsign). Vermeidet nackte „3"/„8" ohne jeden Hinweis.
+  const routeDescriptions = useMemo(() => {
+    const counts = new Map<string, Map<string, number>>();
+    [...(ds1?.trips || []), ...(ds2?.trips || [])].forEach((t) => {
+      const sign = t.trip_headsign?.trim();
+      if (!t.route_id || !sign) return;
+      let c = counts.get(t.route_id);
+      if (!c) {
+        c = new Map();
+        counts.set(t.route_id, c);
+      }
+      c.set(sign, (c.get(sign) || 0) + 1);
+    });
+    const desc = new Map<string, string>();
+    counts.forEach((c, rid) => {
+      let best = "";
+      let max = 0;
+      c.forEach((n, sign) => {
+        if (n > max) {
+          max = n;
+          best = sign;
+        }
+      });
+      if (best) desc.set(rid, `→ ${best}`);
+    });
+    return desc;
   }, [ds1, ds2]);
 
   // Trips for selected route
@@ -334,7 +366,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   useEffect(() => {
     if (selectedRouteId !== "ALL" && filteredStops.length > 0 && mapInstanceRef.current) {
       const bounds = L.latLngBounds(filteredStops.map((s) => [s.stop_lat, s.stop_lon]));
-      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      // animate:false – der animierte Zoom ließ die Canvas-Marker teils nicht
+      // neu zeichnen (Punkte verschwanden auf gewählter Linie). Direkt springen.
+      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: false });
     }
   }, [selectedRouteId, filteredStops]);
 
@@ -347,6 +381,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       zoom: 12,
       zoomControl: false,
       preferCanvas: true, // Canvas-Renderer: tausende Marker bleiben flüssig
+      // tolerance vergrößert die Klick-Trefferfläche der Punkte (bessere
+      // Anklickbarkeit), ohne das Rendern zu beeinflussen.
+      renderer: L.canvas({ tolerance: 8, padding: 0.5 }),
     });
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
@@ -354,12 +391,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     mapInstanceRef.current = map;
     markersGroupRef.current = L.layerGroup().addTo(map);
     polylinesGroupRef.current = L.layerGroup().addTo(map);
+    // Eigener SVG-Renderer für die Linie (ermöglicht Draw-in-Animation)
+    svgRendererRef.current = L.svg({ padding: 0.6 }).addTo(map) as unknown as L.SVG;
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
       markersGroupRef.current = null;
       polylinesGroupRef.current = null;
+      svgRendererRef.current = null;
     };
   }, []);
 
@@ -388,11 +428,17 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(map);
   }, [tileLayerType]);
 
-  // Helper function to extract ordered stop sequence for representative trip
-  const getPolylineForDirection = (trips: GTFSTrip[], isOffset: boolean) => {
+  // Ermittelt den Linienverlauf der repräsentativen (längsten) Fahrt einer
+  // Richtung und gibt sowohl die Punkte als auch die enthaltenen stop_ids zurück.
+  const getPolylineForDirection = (
+    trips: GTFSTrip[]
+  ): { latLons: [number, number][]; stopIds: string[] } | null => {
     if (trips.length === 0) return null;
     const tripIds = new Set(trips.map((t) => t.trip_id));
 
+    // Die LÄNGSTE Fahrt (meiste Halte) wählen – sie deckt den größten Teil der
+    // Strecke ab. Wichtig bei Linien mit kurzen Pendel-Varianten neben der
+    // langen Regelfahrt: ein häufiges kurzes Muster würde nur ein Fragment zeigen.
     let maxStops = 0;
     let bestStopTimes: GTFSStopTime[] = [];
 
@@ -420,22 +466,24 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     checkDataset(ds1);
     checkDataset(ds2);
 
-    if (bestStopTimes.length < 2) return null;
+    const chosen = bestStopTimes;
+    if (chosen.length < 2) return null;
 
-    const sortedSt = [...bestStopTimes].sort((a, b) => a.stop_sequence - b.stop_sequence);
+    const sortedSt = [...chosen].sort((a, b) => a.stop_sequence - b.stop_sequence);
     const stopLookup = new Map<string, GTFSStop>();
     stopsToRender.forEach((s) => stopLookup.set(s.stop_id, s));
 
     const latLons: [number, number][] = [];
+    const stopIds: string[] = [];
     sortedSt.forEach((st) => {
       const s = stopLookup.get(st.stop_id);
       if (s) {
-        const offsetVal = isOffset ? 0.00018 : 0;
-        latLons.push([s.stop_lat + offsetVal, s.stop_lon + offsetVal]);
+        latLons.push([s.stop_lat, s.stop_lon]);
+        stopIds.push(s.stop_id);
       }
     });
 
-    return latLons;
+    return { latLons, stopIds };
   };
 
   // Render Markers & Polylines
@@ -450,13 +498,62 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     if (filteredStops.length === 0) return;
 
-    // 1. Draw Polyline for selected route
+    // 1. Draw Polyline for selected route. Nur Halte, die auf der gezeichneten
+    // Linie liegen, werden später als Marker angezeigt (keine "losen" Halte).
+    const drawnStopIds = new Set<string>();
+    const routeKey = `${selectedRouteId}|${directionFilter}`;
+    const isNewRoute = routeKey !== lastRouteKeyRef.current;
+    lastRouteKeyRef.current = routeKey;
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     if (selectedRouteId !== "ALL") {
-      // Zeichnet EINE Linie + optional schlanke Fahrtrichtungspfeile
       const drawLine = (trips: GTFSTrip[], color: string, withArrows: boolean) => {
-        const latLons = getPolylineForDirection(trips, false);
-        if (!latLons || latLons.length < 2) return;
-        polylinesGroup.addLayer(L.polyline(latLons, { color, weight: 5, opacity: 0.9 }));
+        const path = getPolylineForDirection(trips);
+        if (!path || path.latLons.length < 2) return;
+        const { latLons, stopIds } = path;
+        stopIds.forEach((id) => drawnStopIds.add(id));
+        // Weiße Kontur unter der Linie ("casing") – hebt den Verlauf sauber
+        // von Straßen/Fluss ab, wie bei Karten-Transit-Layern.
+        const casing = L.polyline(latLons, {
+          color: "#ffffff",
+          weight: 5,
+          opacity: 0.9,
+          lineJoin: "round",
+          lineCap: "round",
+          interactive: false, // fängt keine Halte-Klicks ab
+          renderer: svgRendererRef.current || undefined,
+        });
+        polylinesGroup.addLayer(casing);
+        const poly = L.polyline(latLons, {
+          color,
+          weight: 3,
+          opacity: 1,
+          lineJoin: "round",
+          lineCap: "round",
+          interactive: false,
+          renderer: svgRendererRef.current || undefined,
+        });
+        polylinesGroup.addLayer(poly);
+        // Sanfte Einblendung (opacity) statt stroke-dash: reprojektionssicher –
+        // eine dash-basierte Draw-in-Animation zerbricht beim Zoomen/Pannen,
+        // weil die Pixellänge des Pfades sich ändert und das Dash-Muster
+        // stehen bleibt. Opacity ist immun dagegen.
+        if (isNewRoute && !reduceMotion) {
+          [casing, poly].forEach((layer) => {
+            const el = layer.getElement() as SVGPathElement | null;
+            if (!el) return;
+            // Ruhe-Deckkraft steuert die Leaflet-opacity-Option (stroke-opacity);
+            // die Element-Opacity animiert nur von 0 → 1 (Einblenden).
+            el.style.transition = "none";
+            el.style.opacity = "0";
+            el.getBoundingClientRect(); // reflow erzwingen
+            el.style.transition = "opacity 360ms cubic-bezier(0.23,1,0.32,1)";
+            el.style.opacity = "1";
+          });
+        }
         if (!withArrows) return;
         const step = Math.max(2, Math.round((latLons.length - 1) / 6));
         for (let i = 0; i + 1 < latLons.length; i += step) {
@@ -478,7 +575,8 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       };
 
       if (directionFilter === "BOTH") {
-        // Übersichtlich: EINE saubere Linie über den gesamten Linienverlauf
+        // EINE ruhige Linie über den repräsentativen (längsten) Verlauf.
+        // Marker zeigen nur Halte auf dieser Linie → keine losen Punkte.
         drawLine([...dir0Trips, ...dir1Trips], ROUTE_LINE_COLOR, false);
       } else if (directionFilter === "0" && hasDir0) {
         drawLine(dir0Trips, DIR0_COLOR, true);
@@ -523,10 +621,19 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       return { radius, fillColor: fill, color: stroke, weight, fillOpacity: 0.92, opacity: 1 };
     };
 
-    // Wenn viele Halte sichtbar sind: normale Halte kleiner zeichnen
-    const dense = filteredStops.length > 900;
+    // Nur Halte, die AUF dem gezeichneten (längsten) Verlauf liegen – keine
+    // „losen" Punkte neben der Linie. Der längste Verlauf deckt den Großteil der
+    // Strecke ab, daher bleiben trotzdem alle relevanten Halte sichtbar.
+    const stopsToDraw =
+      selectedRouteId === "ALL"
+        ? filteredStops
+        : filteredStops.filter((s) => drawnStopIds.size === 0 || drawnStopIds.has(s.stop_id));
 
-    filteredStops.forEach((stop) => {
+    // Bei tausenden Halten die Punktwolke etwas dezenter, aber weiterhin gut
+    // sicht- UND anklickbar (die Klick-Toleranz des Renderers hilft zusätzlich).
+    const dense = stopsToDraw.length > 900;
+
+    stopsToDraw.forEach((stop) => {
       const stem = getStopNameStem(stop.stop_name) || stop.stop_name;
       const groupKey = getStopGroupKey(stop);
       const isTrain = stop.lines?.some((l) => /^(S|R|RE|RB|MEX|IC|EC)/i.test(l)) || false;
@@ -546,9 +653,16 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       const special = isSelected || isGap || isRemoved || isAdded || isAsymmetric;
       // In der Gesamtansicht (tausende Halte) die Punktwolke dezent halten
       if (dense && !special) {
-        style.radius = 2.6;
-        style.weight = 0.75;
-        style.fillOpacity = 0.6;
+        style.radius = 4;
+        style.weight = 1;
+        style.fillOpacity = 0.82;
+      }
+      // Auf einer gewählten Linie die Halte als klare, große „Stationen" mit
+      // kräftigem weißem Ring hervorheben – gut sichtbar auf dem Linienverlauf.
+      if (selectedRouteId !== "ALL" && !dense && !special) {
+        style.radius = 7.5;
+        style.weight = 3;
+        style.fillOpacity = 1;
       }
 
       const marker = L.circleMarker([stop.stop_lat, stop.stop_lon], style);
@@ -673,13 +787,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[440px] rounded-lg overflow-hidden border border-gray-200 bg-gray-100 flex flex-col">
+    <div className="relative w-full h-full min-h-[440px] rounded-xl overflow-hidden border border-[var(--border)] shadow-[var(--shadow-sm)] bg-gray-100 flex flex-col">
       {/* Floating Overlay Controls on Top of Map */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-start justify-between gap-2 pointer-events-none">
         {/* Left Control Container */}
         <div className="pointer-events-auto flex flex-col gap-2 max-w-full sm:max-w-xl">
           {/* Main Controls Row */}
-          <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-md flex flex-wrap items-center gap-2 text-body">
+          <div className="bg-white/95 backdrop-blur p-2 rounded-xl border border-[var(--border)] shadow-[var(--shadow-md)] flex flex-wrap items-center gap-2 text-body">
             {/* Route Selector (by route_id) */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 rounded-md border border-gray-200">
               <Filter className="w-3.5 h-3.5 text-gray-500" />
@@ -695,12 +809,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                 <option value="ALL">Alle Routen ({routesToRender.length})</option>
                 {routesToRender.map((r) => {
                   const shortName = r.route_short_name || r.route_id;
-                  const longName = r.route_long_name
-                    ? r.route_long_name.length > 32
-                      ? r.route_long_name.substring(0, 32) + "…"
-                      : r.route_long_name
-                    : "";
-                  const label = longName ? `${shortName} — ${longName}` : shortName;
+                  const raw = r.route_long_name || routeDescriptions.get(r.route_id) || "";
+                  const desc = raw.length > 32 ? raw.substring(0, 32) + "…" : raw;
+                  const label = desc ? `${shortName} — ${desc}` : shortName;
                   return (
                     <option key={r.route_id} value={r.route_id}>
                       {label}
@@ -760,41 +871,27 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
           {/* Direction Toggle Row (only if route is selected) */}
           {selectedRouteId !== "ALL" && (
-            <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-md flex items-center gap-2">
+            <div className="bg-white/95 backdrop-blur p-2 rounded-xl border border-[var(--border)] shadow-[var(--shadow-md)] flex items-center gap-2">
               {hasMultipleDirections ? (
-                <div className="flex items-center gap-1 w-full flex-wrap sm:flex-nowrap">
-                  <span className="text-meta text-gray-500 font-medium mr-1 shrink-0">Richtung:</span>
+                <div className="flex items-center gap-1.5 w-full flex-wrap sm:flex-nowrap">
+                  <span className="text-meta text-gray-500 font-medium mr-0.5 shrink-0">Richtung:</span>
                   <button
                     onClick={() => setDirectionFilter("0")}
-                    className={`px-2.5 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer truncate max-w-[170px] ${
-                      directionFilter === "0"
-                        ? "bg-red-600 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
+                    className={`gel text-[13px] px-2.5 py-1 truncate max-w-[170px] ${directionFilter === "0" ? "gel-red" : "gel-light"}`}
                     title={headsignDir0 ? `Hinfahrt: → ${headsignDir0}` : "Hinfahrt"}
                   >
                     {headsignDir0 ? `→ ${headsignDir0}` : "Hinfahrt"}
                   </button>
-
                   <button
                     onClick={() => setDirectionFilter("1")}
-                    className={`px-2.5 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer truncate max-w-[170px] ${
-                      directionFilter === "1"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
+                    className={`gel text-[13px] px-2.5 py-1 truncate max-w-[170px] ${directionFilter === "1" ? "gel-blue" : "gel-light"}`}
                     title={headsignDir1 ? `Rückfahrt: → ${headsignDir1}` : "Rückfahrt"}
                   >
                     {headsignDir1 ? `→ ${headsignDir1}` : "Rückfahrt"}
                   </button>
-
                   <button
                     onClick={() => setDirectionFilter("BOTH")}
-                    className={`px-2 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer shrink-0 ${
-                      directionFilter === "BOTH"
-                        ? "bg-gray-900 text-white"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
+                    className={`gel text-[13px] px-2.5 py-1 shrink-0 ${directionFilter === "BOTH" ? "gel-indigo" : "gel-light"}`}
                   >
                     Beide
                   </button>
@@ -809,38 +906,23 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           )}
         </div>
 
-        {/* Right Floating Box: Tile Layer Selector */}
-        <div className="pointer-events-auto bg-white p-1 rounded-lg border border-gray-200 shadow-md flex items-center gap-1">
-          <button
-            onClick={() => setTileLayerType("light")}
-            className={`px-2.5 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer ${
-              tileLayerType === "light"
-                ? "bg-gray-900 text-white"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            Hell
-          </button>
-          <button
-            onClick={() => setTileLayerType("osm")}
-            className={`px-2.5 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer ${
-              tileLayerType === "osm"
-                ? "bg-gray-900 text-white"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            OSM
-          </button>
-          <button
-            onClick={() => setTileLayerType("satellite")}
-            className={`px-2.5 py-1 rounded-md text-meta font-medium transition-colors cursor-pointer ${
-              tileLayerType === "satellite"
-                ? "bg-gray-900 text-white"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            Satellit
-          </button>
+        {/* Right Floating Box: Tile Layer Selector (Segmented) */}
+        <div className="pointer-events-auto seg backdrop-blur shadow-[var(--shadow-md)]">
+          {([
+            ["light", "Hell"],
+            ["osm", "OSM"],
+            ["satellite", "Satellit"],
+          ] as const).map(([k, label]) => {
+            const active = tileLayerType === k;
+            return (
+              <button key={k} onClick={() => setTileLayerType(k)} data-active={active} className="seg-item">
+                {active && (
+                  <motion.span layoutId="tile-thumb" className="absolute inset-0 rounded-[9px] pill-thumb" transition={{ type: "spring", stiffness: 500, damping: 36 }} />
+                )}
+                <span className="relative z-10">{label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -928,7 +1010,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         const raised = selectedRouteId !== "ALL" && hasMultipleDirections;
         return (
           <div
-            className={`absolute ${raised ? "bottom-16" : "bottom-4"} left-3 z-[600] bg-white/95 backdrop-blur rounded-md border border-gray-200 shadow-sm px-2.5 py-1.5 text-meta text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1 max-w-[calc(100%-1.5rem)]`}
+            className={`absolute ${raised ? "bottom-16" : "bottom-4"} left-3 z-[600] bg-white/95 backdrop-blur rounded-xl border border-[var(--border)] shadow-[var(--shadow-md)] px-3 py-2 text-meta text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1 max-w-[calc(100%-1.5rem)]`}
           >
             {items.map((it, i) =>
               it.kind === "dot" ? (
@@ -947,6 +1029,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                     }
                   />
                   {it.label}
+                  <span
+                    className="text-gray-400 hover:text-gray-600 cursor-help"
+                    title="Schematischer Verlauf: verbindet die bedienten Halte in Fahrtreihenfolge (Luftlinie) – nicht der exakte Straßenverlauf. Die Streckengeometrie (shapes.txt) wird aus Speichergründen nicht geladen."
+                  >
+                    <Info className="w-3 h-3" />
+                  </span>
                 </span>
               )
             )}
@@ -956,7 +1044,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       {/* Selected Stop Floating Drawer */}
       {selectedStop && (
-        <div className="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg p-4 border border-gray-200 shadow-lg max-w-sm w-full">
+        <div className="card rise absolute bottom-4 left-4 z-[1000] p-4 shadow-[var(--shadow-lg)] max-w-sm w-full">
           <div className="flex items-start justify-between gap-2">
             <div>
               <span className="text-meta text-red-600 block font-semibold">
@@ -1000,7 +1088,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                   href={`https://www.google.com/maps/search/?api=1&query=${selectedStop.stop_lat},${selectedStop.stop_lon}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white hover:bg-gray-800 rounded-md text-body font-medium transition-colors"
+                  className="tap flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white hover:bg-gray-800 rounded-md text-body font-medium"
                 >
                   <Navigation className="w-3.5 h-3.5 text-red-400" />
                   Google Maps
@@ -1009,7 +1097,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                 {onSelectStopForTransfer && (
                   <button
                     onClick={() => onSelectStopForTransfer(selectedStop)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-md text-body font-medium transition-colors cursor-pointer"
+                    className="tap flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-md text-body font-medium cursor-pointer"
                   >
                     Umstiege
                   </button>
@@ -1019,7 +1107,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
               {onSelectStopForAI && (
                 <button
                   onClick={() => onSelectStopForAI(selectedStop)}
-                  className="w-full inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-body font-medium border border-red-200 transition-colors cursor-pointer"
+                  className="tap w-full inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-body font-medium border border-red-200 cursor-pointer"
                 >
                   KI nach Verbindungen fragen
                 </button>

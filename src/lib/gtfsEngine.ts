@@ -279,7 +279,10 @@ export function parseGtfsTexts(texts: GtfsTexts, opts: ParseOptions): GTFSDataSe
       routes.push({
         route_id: rid || shortName || `r_${routes.length}`,
         route_short_name: shortName || longName || "Linie",
-        route_long_name: longName || shortName || "",
+        // Kein Fallback auf den Kurznamen: der Langname ist beschreibender Text
+        // (Linienweg). Fehlt er, bleibt er leer und wird in der UI als „–" gezeigt –
+        // niemals ein Rohwert wie "1" in einer Beschreibungsspalte.
+        route_long_name: longName || "",
         route_type: parseInt(cleanField(f[idx("route_type")]), 10) || 3,
         route_color: colorRaw ? `#${colorRaw.replace(/^#/, "")}` : undefined,
         route_text_color: cleanField(f[idx("route_text_color")]) || undefined,
@@ -1140,6 +1143,16 @@ export function getTransferConnectionsAtStop(
         if (depM === undefined || depM === null || depM < minDep || depM > maxDep) continue;
         const trip = idx.tripById.get(st.trip_id);
         if (!trip || !isServiceActiveOnYmd(idx, trip.service_id, dateYmd)) continue;
+
+        // Fahrten, die AM Umstiegsknoten enden, sind keine Anschlüsse – man
+        // kann nicht einsteigen, um weiterzufahren. Nur Fahrten mit einem Halt
+        // NACH dem Knoten zählen (sonst würde der Knoten selbst als "Ziel"
+        // erscheinen, z.B. "nach Heilbronn Hbf").
+        const depTripList = idx.stopTimesByTrip.get(st.trip_id);
+        const lastSeq =
+          depTripList && depTripList.length ? depTripList[depTripList.length - 1].stop_sequence : undefined;
+        if (lastSeq !== undefined && st.stop_sequence >= lastSeq) continue;
+
         const route = idx.routeById.get(trip.route_id);
         const routeShort = route?.route_short_name || trip.route_id;
 
@@ -1148,8 +1161,10 @@ export function getTransferConnectionsAtStop(
         const bufferSec = (depM - a.mins) * 60;
         if (bufferSec < minReq) continue;
 
+        // Ziel = Zielbeschilderung (trip_headsign) der Fahrt; sonst der echte
+        // Endhalt. Beides ist dank des Filters oben nie der Umstiegsknoten selbst.
         const destName =
-          idx.tripLastStopName.get(trip.trip_id) || trip.trip_headsign || depStop.stop_name;
+          trip.trip_headsign || idx.tripLastStopName.get(trip.trip_id) || depStop.stop_name;
 
         // Zielfilter (optional): nur Anschlüsse Richtung Ziel
         if (tf) {

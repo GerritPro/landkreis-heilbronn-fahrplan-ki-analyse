@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { Navbar } from "./components/Navbar";
 import { FileUploadSection } from "./components/FileUploadSection";
 import { InteractiveMap } from "./components/InteractiveMap";
@@ -52,6 +53,9 @@ export default function App() {
 
   // AI initial prompt
   const [initialAiPrompt, setInitialAiPrompt] = useState<string | undefined>(undefined);
+
+  // Aktiver Analyse-Tab im rechten Panel
+  const [activeTab, setActiveTab] = useState<"transfers" | "chat" | "diff">("transfers");
 
   // Poll AI status every 30 seconds
   useEffect(() => {
@@ -111,18 +115,12 @@ export default function App() {
     setInitialAiPrompt(
       `Bitte analysieren Sie die Verbindungen, Taktung und Anschlüsse an der Haltestelle "${stop.stop_name}".`
     );
-    const el = document.getElementById("section-chat");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setActiveTab("chat");
   };
 
   const handleSelectStopForTransfer = (stop: GTFSStop) => {
     setSelectedStopId(stop.stop_id);
-    const el = document.getElementById("section-transfers");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setActiveTab("transfers");
   };
 
   const handleShowGapsOnMap = (stems: Set<string>) => {
@@ -141,20 +139,19 @@ export default function App() {
 
   const handleStartAIChatWithFacts = (factsText: string) => {
     setInitialAiPrompt(factsText);
-    const el = document.getElementById("section-chat");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setActiveTab("chat");
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 flex flex-col font-sans text-gray-900">
+    <div className="min-h-screen flex flex-col font-sans text-gray-900" style={{ background: "var(--bg)" }}>
       {/* Header / Navbar */}
       <Navbar
         ds1={ds1}
         ds2={ds2}
         aiStatus={aiStatus}
         isDemo={isDemo}
+        activeTab={activeTab}
+        onSetTab={setActiveTab}
         onOpenSettings={() => setIsSettingsOpen(true)}
         isUploadOpen={isUploadOpen}
         onToggleUpload={() => setIsUploadOpen(!isUploadOpen)}
@@ -162,19 +159,16 @@ export default function App() {
         onDeleteDs2={handleDeleteDs2}
       />
 
-      {/* Persistent Yellow Demo Mode Banner */}
+      {/* Persistent Demo Mode Banner */}
       {isDemo && (
-        <div className="bg-amber-400 text-amber-950 border-b border-amber-500 px-4 py-2.5 text-body font-medium flex items-center justify-between gap-3">
+        <div className="bg-amber-50 text-amber-900 border-b border-amber-200 px-4 py-2 text-body font-medium flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 max-w-[1800px] mx-auto w-full">
-            <span className="px-2 py-0.5 bg-amber-950 text-amber-100 rounded-sm text-meta font-medium">
-              Demo-Modus
+            <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md text-label">
+              Demo
             </span>
-            <span>DEMO-MODUS – fiktive Beispieldaten, keine echten Fahrpläne</span>
+            <span className="text-amber-800">Fiktive Beispieldaten – keine echten Fahrpläne.</span>
           </div>
-          <button
-            onClick={handleStopDemo}
-            className="px-3 py-1 bg-amber-950 text-white hover:bg-amber-900 rounded-md text-body font-medium transition-colors shrink-0 cursor-pointer"
-          >
+          <button onClick={handleStopDemo} className="gel gel-amber text-body px-3.5 py-1.5 shrink-0">
             Demo beenden
           </button>
         </div>
@@ -208,10 +202,10 @@ export default function App() {
       )}
 
       {/* Main One-Page Dashboard Area */}
-      <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <main className="flex-1 max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-6">
         {/* Responsive Grid: Karte 58% / Analyse 42%, 1-spaltig auf mobil.
             Karte füllt auf Desktop die volle Viewport-Höhe (sticky). */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-7 items-start">
           {/* LEFT COLUMN: Sticky Interactive Map, volle Höhe */}
           <div className="lg:col-span-7 lg:sticky lg:top-[72px] lg:h-[calc(100vh-88px)] min-h-[440px] h-[560px]">
             <InteractiveMap
@@ -230,41 +224,38 @@ export default function App() {
           </div>
 
           {/* RIGHT COLUMN: Scrollable Analysis Sections (42% width = col-span-5) */}
-          <div className="lg:col-span-5 space-y-4 lg:overflow-y-auto lg:h-[calc(100vh-88px)] pr-1">
+          <div className="lg:col-span-5 space-y-6 lg:overflow-y-auto lg:h-[calc(100vh-88px)] pr-1 stagger">
             {/* Netz-Kennzahlen (nur wenn Daten geladen) */}
             <NetworkSummary ds1={ds1} ds2={ds2} />
 
             {/* Start Welcome Card when no dataset is loaded */}
             {!ds1 && !ds2 && !isDemo && (
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-gray-100 text-gray-700 rounded-md">
-                    <Upload className="w-5 h-5 text-gray-600" />
+              <div className="card rise p-5 overflow-hidden relative">
+                <div
+                  className="absolute inset-x-0 top-0 h-1"
+                  style={{ background: "linear-gradient(90deg, var(--brand), #82B822, #E6D815)" }}
+                />
+                <div className="flex items-center gap-3 mb-3 mt-1">
+                  <div className="p-2.5 rounded-xl" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
+                    <Upload className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-heading text-gray-900">
-                      Willkommen zur Soll-Fahrplan KI-Analyse
+                    <h3 className="text-heading text-gray-900 text-[15px]">
+                      Willkommen zur Fahrplan-Analyse
                     </h3>
-                    <p className="text-meta text-gray-500">
-                      Landkreis Heilbronn – GTFS-Analyse & Vorher-Nachher-Vergleich
-                    </p>
+                    <p className="text-meta">Landkreis Heilbronn · GTFS-Analyse & Vorher-Nachher-Vergleich</p>
                   </div>
                 </div>
-                <p className="text-body text-gray-600 mb-4">
-                  Laden Sie Ihre GTFS-Soll-Fahrplandaten (.zip) hoch oder nutzen Sie die interaktiven Beispieldaten für den HNV-Raum Heilbronn.
+                <p className="text-body text-gray-600 mb-4 max-w-prose">
+                  Laden Sie Ihre GTFS-Soll-Fahrplandaten (.zip) hoch – Karte, Takt-Analyse, Bedienungslücken
+                  und Umstiege werden automatisch berechnet. Oder starten Sie mit interaktiven Beispieldaten.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-2.5">
-                  <button
-                    onClick={() => setIsUploadOpen(true)}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-body font-medium transition-colors cursor-pointer"
-                  >
+                  <button onClick={() => setIsUploadOpen(true)} className="flex-1 gel gel-pill gel-blue">
                     <Upload className="w-4 h-4" />
                     Fahrplan-ZIP laden
                   </button>
-                  <button
-                    onClick={handleStartDemo}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-transparent hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-md text-body font-medium transition-colors cursor-pointer"
-                  >
+                  <button onClick={handleStartDemo} className="flex-1 gel gel-pill gel-light">
                     <RefreshCw className="w-4 h-4 text-gray-500" />
                     Demo-Daten ansehen
                   </button>
@@ -272,65 +263,87 @@ export default function App() {
               </div>
             )}
 
-            {/* Section a: Umstiegs- & Anschlussanalyse */}
-            <section id="section-transfers" className="scroll-mt-20">
-              <TransferAnalyzer
-                ds1={ds1}
-                ds2={ds2}
-                externalSelectedStopId={selectedStopId}
-                onSelectStop={(stop) => setSelectedStopId(stop.stop_id)}
-                onOpenUpload={() => setIsUploadOpen(true)}
-              />
-            </section>
-
-            {/* Section b: KI Chat */}
-            <section id="section-chat" className="scroll-mt-20">
-              <AiChatWindow
-                ds1={ds1}
-                ds2={ds2}
-                ollamaUrl={ollamaUrl}
-                ollamaModel={ollamaModel}
-                aiStatus={aiStatus}
-                initialPrompt={initialAiPrompt}
-                onClearInitialPrompt={() => setInitialAiPrompt(undefined)}
-              />
-            </section>
-
-            {/* Section c: Fahrplan-Vergleich & Diffs */}
-            <section id="section-diff" className="scroll-mt-20">
-              <GtfsDiffView
-                ds1={ds1}
-                ds2={ds2}
-                onShowGapsOnMap={handleShowGapsOnMap}
-                onShowDiffOnMap={handleShowDiffOnMap}
-                onStartAIChatWithFacts={handleStartAIChatWithFacts}
-                onHoverStopStem={setHoveredStopStem}
-                onOpenUpload={() => setIsUploadOpen(true)}
-              />
-            </section>
+            {/* Analyse-Panels (Tab-Umschaltung über die Navbar, weicher Übergang,
+                Panels bleiben gemountet → Zustand bleibt erhalten) */}
+            {(ds1 || ds2 || isDemo) &&
+              (
+                [
+                  { id: "transfers" as const, node: (
+                    <TransferAnalyzer
+                      ds1={ds1}
+                      ds2={ds2}
+                      externalSelectedStopId={selectedStopId}
+                      onSelectStop={(stop) => setSelectedStopId(stop.stop_id)}
+                      onOpenUpload={() => setIsUploadOpen(true)}
+                    />
+                  ) },
+                  { id: "chat" as const, node: (
+                    <AiChatWindow
+                      ds1={ds1}
+                      ds2={ds2}
+                      ollamaUrl={ollamaUrl}
+                      ollamaModel={ollamaModel}
+                      aiStatus={aiStatus}
+                      initialPrompt={initialAiPrompt}
+                      onClearInitialPrompt={() => setInitialAiPrompt(undefined)}
+                    />
+                  ) },
+                  { id: "diff" as const, node: (
+                    <GtfsDiffView
+                      ds1={ds1}
+                      ds2={ds2}
+                      onShowGapsOnMap={handleShowGapsOnMap}
+                      onShowDiffOnMap={handleShowDiffOnMap}
+                      onStartAIChatWithFacts={handleStartAIChatWithFacts}
+                      onHoverStopStem={setHoveredStopStem}
+                      onOpenUpload={() => setIsUploadOpen(true)}
+                    />
+                  ) },
+                ] as const
+              ).map(({ id, node }) => {
+                const active = activeTab === id;
+                return (
+                  <motion.section
+                    key={id}
+                    id={`section-${id}`}
+                    initial={false}
+                    animate={active ? { opacity: 1, y: 0, filter: "blur(0px)" } : { opacity: 0, y: 10, filter: "blur(2px)" }}
+                    transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+                    style={{ display: active ? "block" : "none" }}
+                  >
+                    {node}
+                  </motion.section>
+                );
+              })}
           </div>
         </div>
       </main>
 
       {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-gray-900 text-white px-4 py-3 rounded-md shadow-md text-body flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            className="fixed bottom-5 right-5 z-50 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-[var(--shadow-lg)] text-body flex items-center gap-2.5"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-4 text-center text-meta text-gray-500 mt-auto">
+      <footer className="bg-white border-t border-[var(--border)] py-4 text-center text-meta mt-auto">
         <div className="max-w-[1800px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-body text-gray-700 font-medium">
+          <div className="flex items-center gap-2 text-body text-gray-600">
             <span className="text-heading text-gray-900">Landkreis Heilbronn</span>
-            <span>•</span>
+            <span className="text-gray-300">·</span>
             <span>Soll-Fahrplan KI-Analyse</span>
           </div>
-          <div className="text-meta">
-            HNV Heilbronner Nahverkehr & NVBW GTFS Format
-          </div>
+          <div className="text-meta">HNV Heilbronner Nahverkehr & NVBW GTFS-Format</div>
         </div>
       </footer>
 

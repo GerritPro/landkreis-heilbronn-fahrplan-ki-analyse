@@ -10,6 +10,81 @@ function ymdToDate(ymd: string): Date {
   );
 }
 
+// Füllwörter/Frage-Vokabular, das keine Haltestelle identifiziert. Ortsteile wie
+// „Bahnhof"/„Marktplatz" bleiben BEWUSST drin (helfen beim Disambiguieren, z.B.
+// „Heilbronn Hauptbahnhof" schlägt das generische „Heilbronn").
+const STOP_STOPWORDS = new Set([
+  "welche", "gibt", "fahren", "fährt", "kommen", "kommt", "danach", "dann", "nach",
+  "menschen", "leute", "schule", "wieviele", "viele", "können", "kann", "zwischen",
+  "linie", "linien", "haltestelle", "station", "umstieg", "umstiege", "anschluss",
+  "anschlüsse", "verbindung", "verbindungen", "fahrplan", "fahrpläne", "busse",
+  "fasse", "zusammen", "angebot", "richtung", "abends", "sonntag", "samstag",
+]);
+
+/**
+ * Findet die passende Haltestelle zur Frage. Zuerst exakter Namenstreffer;
+ * sonst – nur bei Anschluss-/Zeit-Fragen – die Haltestelle mit der höchsten
+ * Überlappung distinktiver Orts-Tokens (z.B. „Schwaigern" → „Schwaigern Leintalschule").
+ */
+function findStopForPrompt(
+  stops: GTFSDataSet["stops"],
+  p: string,
+  allowTokenMatch: boolean
+) {
+  // Exakter Namenstreffer – möglichst SPEZIFISCH (längster enthaltener Name),
+  // damit ein generisches „Heilbronn" nicht das „Heilbronn Hbf …" verdrängt.
+  let exact: GTFSDataSet["stops"][number] | null = null;
+  for (const s of stops) {
+    if (s.stop_name.length > 4 && p.includes(s.stop_name.toLowerCase())) {
+      if (!exact || s.stop_name.length > exact.stop_name.length) exact = s;
+    }
+  }
+  if (!allowTokenMatch) return exact;
+
+  const tokens = (p.match(/[a-zäöüß]{4,}/g) || []).filter((t) => !STOP_STOPWORDS.has(t));
+  if (tokens.length === 0) return exact;
+
+  // Synonyme: Feeds schreiben oft „Hbf" statt „Hauptbahnhof".
+  const variantsOf = (t: string): string[] =>
+    t === "hauptbahnhof" ? ["hauptbahnhof", "hbf"] : t === "bahnhof" ? ["bahnhof", "bhf"] : [t];
+
+  // Generische Ortsteil-Wörter: helfen beim Verfeinern, sind aber allein kein
+  // Ortsbezug. Ein Treffer MUSS mindestens ein distinktives Orts-Token enthalten
+  // (sonst würde „Bahnhof" auf „Wien Hauptbahnhof" matchen).
+  const QUALIFIERS = new Set(["hauptbahnhof", "hbf", "bahnhof", "bhf", "marktplatz", "platz", "strasse", "straße"]);
+  const distinctive = tokens.filter((t) => !QUALIFIERS.has(t));
+  if (distinctive.length === 0) return exact;
+
+  const wantsHbf = /hauptbahnhof|\bhbf\b/.test(p);
+  const wantsBhf = !wantsHbf && /bahnhof|\bbhf\b/.test(p);
+
+  const pick = (allow: (name: string) => boolean): GTFSDataSet["stops"][number] | null => {
+    let best: GTFSDataSet["stops"][number] | null = null;
+    let bestScore = 0;
+    for (const s of stops) {
+      if (s.stop_name.length <= 4) continue;
+      const name = s.stop_name.toLowerCase();
+      if (!allow(name)) continue;
+      let dScore = 0;
+      for (const t of distinctive) if (variantsOf(t).some((v) => name.includes(v))) dScore++;
+      if (dScore === 0) continue; // ohne Ortsbezug kein Treffer
+      let score = dScore;
+      for (const t of tokens) if (QUALIFIERS.has(t) && variantsOf(t).some((v) => name.includes(v))) score += 0.5;
+      if (score > bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    return best;
+  };
+
+  let best: GTFSDataSet["stops"][number] | null = null;
+  if (wantsHbf) best = pick((n) => /hauptbahnhof|hbf/.test(n));
+  else if (wantsBhf) best = pick((n) => /bahnhof|bhf/.test(n));
+  if (!best) best = pick(() => true); // Fallback ohne Qualifier-Filter
+  return best || exact;
+}
+
 /**
  * Erzeugt aus der (bereits vorberechneten) Analyse ein kompaktes Fakten-JSON,
  * das dem KI-Modell als einzige Wahrheitsgrundlage dient. Keine schweren
@@ -54,38 +129,44 @@ export function calculateFactsForPrompt(
     const diff = compareGTFSDataSets(ds1, ds2);
     const stopsDiff = analyzeStopsDiff(ds1, ds2);
     facts.vergleich = {
-      neueLinien: diff.addedRoutes.map((r) => `L${r.route_short_name} (${r.route_long_name})`).slice(0, 15),
-      entfalleneLinien: diff.removedRoutes.map((r) => `L${r.route_short_name} (${r.route_long_name})`).slice(0, 15),
+      neueLinien: diff.addedRoutes.map((r) => `Linie ${r.route_short_name}${r.route_long_name ? ` (${r.route_long_name})` : ""}`).slice(0, 15),
+      entfalleneLinien: diff.removedRoutes.map((r) => `Linie ${r.route_short_name}${r.route_long_name ? ` (${r.route_long_name})` : ""}`).slice(0, 15),
       geaenderteLinien: diff.modifiedRoutes.length,
       neueHaltestellen: stopsDiff.addedStopStems.length,
       entfalleneHaltestellen: stopsDiff.removedStopStems.length,
     };
   }
 
-  // 2. Umstiege (falls in der Frage eine Haltestelle genannt wird)
+  // 2. Umstiege / Anschlüsse (falls in der Frage eine Haltestelle genannt wird)
   if (targetDs?.analysis) {
+    const wantsConnections = /umstie|anschl|verbind|\bbus|fahr|erreich|komm|\b\d{1,2}[:.]\d{2}\b/.test(p);
     let stopId: string | null = null;
-    const named = targetDs.stops.find(
-      (s) => s.stop_name.length > 4 && p.includes(s.stop_name.toLowerCase())
-    );
+    const named = findStopForPrompt(targetDs.stops, p, wantsConnections);
     if (named) stopId = named.stop_id;
-    else {
+    else if (wantsConnections) {
       const hub = targetDs.stops.find((s) => /hauptbahnhof|hbf|rathaus|zob|busbahnhof/i.test(s.stop_name));
-      if (hub && (p.includes("umstieg") || p.includes("anschluss") || p.includes("verbindung"))) {
-        stopId = hub.stop_id;
-      }
+      if (hub) stopId = hub.stop_id;
     }
     if (stopId) {
+      // Zeit aus der Frage übernehmen (z.B. „nach 12:40", „um 7.15 Uhr").
+      // Fällt auf 14:00 zurück, wenn keine Uhrzeit genannt ist. So beantwortet
+      // die KI reale Szenarien wie „Schule aus um 12:40 – welche Busse fahren
+      // danach ab Haltestelle X".
+      const timeMatch = p.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
+      const queryTime = timeMatch
+        ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}`
+        : "14:00";
       const repDate = ymdToDate(targetDs.analysis.representativeDates.weekday);
-      const transfers = getTransferConnectionsAtStop(targetDs, stopId, "14:00", repDate);
+      const transfers = getTransferConnectionsAtStop(targetDs, stopId, queryTime, repDate);
       const stop = targetDs.stops.find((s) => s.stop_id === stopId);
       if (transfers.length > 0) {
         facts.umstiege = {
           haltestelle: stop?.stop_name,
+          abZeit: queryTime,
           verbindungen: transfers.slice(0, 8).map((t) => ({
-            an: `${t.arrivingTrip.arrivalTime} L${t.arrivingTrip.routeShortName}`,
+            an: `${t.arrivingTrip.arrivalTime} Linie ${t.arrivingTrip.routeShortName}`,
             wartezeit: `${t.waitTimeMinutes} Min`,
-            ab: `${t.departingTrip.departureTime} L${t.departingTrip.routeShortName}`,
+            ab: `${t.departingTrip.departureTime} Linie ${t.departingTrip.routeShortName}`,
             richtung: t.departingTrip.toStopName,
           })),
         };
@@ -101,8 +182,8 @@ export function calculateFactsForPrompt(
       .sort((a, b) => b.days[day].trips - a.days[day].trips)
       .slice(0, 12)
       .map((r) => ({
-        linie: `L${r.shortName}`,
-        verlauf: r.longName,
+        linie: `Linie ${r.shortName}`,
+        verlauf: r.longName || "",
         fahrten: r.days[day].trips,
         takt: r.days[day].headway,
       }));

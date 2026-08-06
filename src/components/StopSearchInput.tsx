@@ -119,7 +119,7 @@ export const StopSearchInput: React.FC<StopSearchInputProps> = ({
   return (
     <div ref={containerRef} className="relative w-full">
       {label && (
-        <label className="block text-heading text-gray-700 mb-1.5">
+        <label className="block text-label mb-1.5">
           {label}
         </label>
       )}
@@ -135,16 +135,16 @@ export const StopSearchInput: React.FC<StopSearchInputProps> = ({
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-md text-body focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-gray-900"
+          className="w-full pl-9 pr-9 py-2.5 bg-white border border-[var(--border-strong)] rounded-xl text-body text-gray-900"
         />
-        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
           <Search className="w-3.5 h-3.5" />
         </div>
       </div>
 
       {/* Autocomplete Dropdown */}
       {isOpen && query.trim().length >= 2 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-md max-h-60 overflow-y-auto py-1 text-body">
+        <div className="card absolute z-50 left-0 right-0 mt-2 max-h-60 overflow-y-auto p-1.5 text-body shadow-[var(--shadow-lg)]">
           {suggestions.length === 0 ? (
             <div className="px-3 py-2 text-gray-400">
               Keine passende Haltestelle gefunden
@@ -160,8 +160,8 @@ export const StopSearchInput: React.FC<StopSearchInputProps> = ({
                   key={stop.stop_id}
                   onClick={() => handleSelect(stop)}
                   onMouseEnter={() => setHighlightedIndex(idx)}
-                  className={`px-3 py-2 cursor-pointer flex items-center justify-between transition-colors ${
-                    isHighlighted ? "bg-emerald-50 text-emerald-900 font-medium" : "text-gray-800 hover:bg-gray-50"
+                  className={`px-2.5 py-2 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                    isHighlighted ? "bg-[color-mix(in_srgb,var(--bus)_12%,#fff)] text-emerald-900 font-medium" : "text-gray-800"
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate pr-2">
